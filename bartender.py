@@ -1,6 +1,3 @@
-import gaugette.ssd1306
-import gaugette.platform
-import gaugette.gpio
 import time
 import sys
 import RPi.GPIO as GPIO
@@ -12,19 +9,33 @@ from dotstar import Adafruit_DotStar
 from menu import MenuItem, Menu, Back, MenuContext, MenuDelegate
 from drinks import drink_list, drink_options
 
-GPIO.setmode(GPIO.BCM)
+from subprocess import Popen, PIPE
+from time import sleep
+from datetime import datetime
+import board
+import digitalio
+import adafruit_character_lcd.character_lcd as characterlcd
 
-SCREEN_WIDTH = 128
-SCREEN_HEIGHT = 64
+# Modify this if you have a different sized character LCD
+lcd_columns = 16
+lcd_rows = 2
+
+# compatible with all versions of RPI as of Jan. 2019
+# v1 - v3B+
+lcd_rs = digitalio.DigitalInOut(board.D22)
+lcd_en = digitalio.DigitalInOut(board.D17)
+lcd_d4 = digitalio.DigitalInOut(board.D25)
+lcd_d5 = digitalio.DigitalInOut(board.D24)
+lcd_d6 = digitalio.DigitalInOut(board.D23)
+lcd_d7 = digitalio.DigitalInOut(board.D18)
+
+GPIO.setmode(GPIO.BCM)
 
 LEFT_BTN_PIN = 13
 LEFT_PIN_BOUNCE = 1000
 
 RIGHT_BTN_PIN = 5
 RIGHT_PIN_BOUNCE = 2000
-
-OLED_RESET_PIN = 15
-OLED_DC_PIN = 16
 
 NUMBER_NEOPIXELS = 45
 NEOPIXEL_DATA_PIN = 26
@@ -55,14 +66,8 @@ class Bartender(MenuDelegate):
 		spi = gaugette.spi.SPI(spi_bus, spi_device)
 
 		# Very important... This lets py-gaugette 'know' what pins to use in order to reset the display
-		self.led = gaugette.ssd1306.SSD1306(gpio, spi, reset_pin=OLED_RESET_PIN, dc_pin=OLED_DC_PIN, rows=self.screen_height, cols=self.screen_width) # Change rows & cols values depending on your display dimensions.
-		self.led.begin()
-		self.led.clear_display()
-		self.led.display()
-		self.led.invert_display()
-		time.sleep(0.5)
-		self.led.normal_display()
-		time.sleep(0.5)
+		self.lcd = characterlcd.Character_LCD_Mono(lcd_rs, lcd_en, lcd_d4, lcd_d5, lcd_d6,
+                                      lcd_d7, lcd_columns, lcd_rows)
 
 		# load the pump configuration from file
 		self.pump_configuration = Bartender.readPumpConfiguration()
@@ -226,9 +231,8 @@ class Bartender(MenuDelegate):
 
 	def displayMenuItem(self, menuItem):
 		print menuItem.name
-		self.led.clear_display()
-		self.led.draw_text2(0,20,menuItem.name,2)
-		self.led.display()
+		seld.lcd.clear()
+		self.lcd.message = menuItem.name
 
 	def cycleLights(self):
 		t = threading.currentThread()
@@ -272,9 +276,8 @@ class Bartender(MenuDelegate):
 	def progressBar(self, waitTime):
 		interval = waitTime / 100.0
 		for x in range(1, 101):
-			self.led.clear_display()
-			self.updateProgressBar(x, y=35)
-			self.led.display()
+			self.lcd.clear()
+			self.updateProgressBar(x)
 			time.sleep(interval)
 
 	def makeDrink(self, drink, ingredients):
@@ -334,18 +337,12 @@ class Bartender(MenuDelegate):
 		if not self.running:
 			self.menuContext.select()
 
-	def updateProgressBar(self, percent, x=15, y=15):
-		height = 10
-		width = self.screen_width-2*x
-		for w in range(0, width):
-			self.led.draw_pixel(w + x, y)
-			self.led.draw_pixel(w + x, y + height)
-		for h in range(0, height):
-			self.led.draw_pixel(x, h + y)
-			self.led.draw_pixel(self.screen_width-x, h + y)
-			for p in range(0, percent):
-				p_loc = int(p/100.0*width)
-				self.led.draw_pixel(x + p_loc, h + y)
+	def updateProgressBar(self, percent):
+		nr_of_characters = int(lcd_columns*percent)
+		bar = ""
+		for w in range(0, nr_of_characters):
+			bar += "█"
+		self.lcd.message = bar
 
 	def run(self):
 		self.startInterrupts()
@@ -364,7 +361,6 @@ class Bartender(MenuDelegate):
 bartender = Bartender()
 bartender.buildMenu(drink_list, drink_options)
 bartender.run()
-
 
 
 
